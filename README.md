@@ -12,6 +12,7 @@ CouchDB proxy authentication using Ross servers.
 
 * Add the list of admins.
 * Add the secret which is in couch_httpd_auth.secret in the CouchDB config.
+* Use `git update-index --assume-unchanged` to prevent edits to credentials.js from being tracked by git.
 
 ## Usage
 
