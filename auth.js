@@ -1,3 +1,5 @@
+var port = 8124;
+
 var sys = require('sys');
 var ImapConnection = require('./node-imap/imap').ImapConnection;
 	
@@ -92,22 +94,33 @@ function makeLoginRedirectURL(base, username, success, msg) {
 	return base.replace(/#.*$/, '') + "#" + qs.stringify(resp);
 }
 
+var getloginPage = require('fs').readFileSync("getlogin.js");
+
 var http = require('http');
 var parseUrl = require('url').parse;
 http.createServer(function (request, response) {
 	var path = parseUrl(request.url).pathname;
+	if (path.indexOf("/getlogin.js") == 0) {
+		response.writeHead(200, "OK",
+			{'Content-Type': 'text/javascript'});
+		response.end(getloginPage);
+		return;
+	}
+	
 	if (path != "/login") {
 		response.writeHead(404, "Not Found",
 			{'Content-Type': 'text/plain'});
 		response.end("No.");
 		return;
 	}
+	
 	if (request.method.toLowerCase() != "post") {
 		response.writeHead(405, "Method Not Allowed",
 			{'Content-Type': 'text/plain'});
 		response.end("No. Use POST.");
 		return;
 	}
+	
 	var body = "";
 	request.addListener("data", function (chunk) {
 		body += chunk;
@@ -125,4 +138,4 @@ http.createServer(function (request, response) {
 			response.end('\n');
 		});
 	});
-}).listen(8124);
+}).listen(port);
