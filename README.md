@@ -5,6 +5,7 @@ CouchDB proxy authentication using Ross servers.
 ## Set up
 
     git submodule init
+    git submodule update
     cd node-ldapauth
     ./build.sh
 
