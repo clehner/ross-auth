@@ -1,0 +1,12 @@
+Ross Authenticator
+
+
+Set up:
+
+git submodule init
+cd node-ldapauth
+./build.sh
+
+Edit credentials.js:
+1. Add the list of admins.
+2. Add the secret which is in couch_httpd_auth.secret in the CouchDB config.

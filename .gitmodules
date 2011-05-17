@@ -1,0 +1,6 @@
+[submodule "node-imap"]
+	path = node-imap
+	url = git://github.com/mscdex/node-imap.git
+[submodule "node-ldapauth"]
+	path = node-ldapauth
+	url = git://github.com/joewalnes/node-ldapauth.git
