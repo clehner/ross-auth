@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ross Authenticator Example</title>
+</head>
+<body>
+<form id="login" action="http://localhost:8124/login" method="post">
+	<p>Username: <input id="username" name="username"><br>
+	Password: <input id="password" name="password" type="password"></p>
+	<p><button type="submit">Log in</button></p>
+</form>
+<pre id="result"></pre>
+<script>
+function gotlogin(username, token, roles) {
+	location.replace(location.pathname + "#");
+	var result = username ? 
+		"Username: " + username + "\n" +
+		"Token: " + token + "\n" +
+		"Roles: " + roles :
+	"Bad login.";
+	document.getElementById("result").textContent = result;
+}
+</script>
+<script src="http://localhost:8124/getlogin.js?callback=gotlogin"></script>
+</body>
+</html>
