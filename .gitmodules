@@ -4,3 +4,6 @@
 [submodule "node-ldapauth"]
 	path = node-ldapauth
 	url = git://github.com/joewalnes/node-ldapauth.git
+[submodule "node-couch"]
+	path = node-couch
+	url = git://github.com/sixtus/node-couch.git

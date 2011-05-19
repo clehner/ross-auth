@@ -1,6 +1,6 @@
 # Ross Authenticator
 
-CouchDB proxy authentication using Ross servers.
+CouchDB proxy authentication using Ross LDAP and/or IMAP servers.
 
 ## Set up
 
@@ -11,20 +11,20 @@ CouchDB proxy authentication using Ross servers.
 
 ### Edit credentials.js
 
-* Add the list of admins.
-* Add the secret which is in couch_httpd_auth.secret in the CouchDB config.
+* Add the database url, and a username:password for a database admin user.
 * Use `git update-index --assume-unchanged credentials.js` to prevent edits to credentials.js from being tracked by git.
 
 ## Usage
 
-To start the auth server:
+To start the auth server that proxies from http to ldap/imap:
 
+    cd server
     node auth.js
 
-To login, post to `http://localhost:8124/login`
-And read the location.hash response using `http://localhost:8124/getlogin.js?callback=yourfunction`
+### To login, the procedure is as follows.
 
-This is demonstrated in `example-login.html`.
+* Try logging in to CouchDB normally.
+* If the login fails, post the login to `http://localhost:8124/login`
+* Then try logging in to CouchDB again.
 
-## Todo
-* Add CouchDB code to example page.
+This is demonstrated in `client/login.html`.

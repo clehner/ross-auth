@@ -1,4 +1,17 @@
-var port = 8124;
+var cred = require('./credentials').credentials;
+var admins = cred.admins;
+
+function makeHost(auth) {
+	return cred.host.replace('://', '://' + auth + '@');
+}
+
+function getUserRoles(username) {
+	// todo: make this more useful
+	return [];
+}
+
+var CouchDB = require('./node-couch/lib').CouchDB;
+var usersDb = CouchDB.db('_users', makeHost(cred.adminAuth));
 
 var sys = require('sys');
 var ImapConnection = require('./node-imap/imap').ImapConnection;
@@ -37,7 +50,8 @@ function LDAPAuth(username, password, callback) {
 
 
 // try these auth services, in this order:
-var auths = [LDAPAuth, IMAPAuth];
+//var auths = [LDAPAuth, IMAPAuth];
+var auths = [IMAPAuth];
 
 function tryAuth(username, password, callback, i) {
 	//sys.debug("trying auth: "+ username + ", " + password);
@@ -61,52 +75,74 @@ function tryAuth(username, password, callback, i) {
 	}
 }
 
-var cred = require('./credentials').credentials;
-var admins = cred.admins;
-var secret = cred.secret;
-
-function getUserRoles(username) {
-	return admins.indexOf(username) == -1 ? [] : ["_admin"];
+var crypto = require("crypto");
+function hex_sha1(str) {
+	var hash = crypto.createHash('sha1');
+	hash.update(str);
+	return hash.digest('hex');
 }
 
-var crypto = require('crypto');
-
-function hex_hmac_sha1(data, key) {
-  var hmac = crypto.createHmac('sha1', key);
-  hmac.update(data);
-  return hmac.digest('hex');
-}
-
-function makeAuthToken(username, roles) {
-	return hex_hmac_sha1(username, secret);
-	// todo: fix couchdb to add roles to the hash
-}
-
-var qs = require('querystring');
-function makeLoginRedirectURL(base, username, success, msg) {
-	var resp = {ok: success};
-	if (success) {
-		resp.username = username;
-		resp.roles = getUserRoles(username).join(",");
-		resp.token = makeAuthToken(username, resp.roles);
+var uuidsCache = [];
+function getUUID(cb) {
+	if (uuidsCache.length <= 1) {
+		CouchDB.generateUUIDs({
+			success: function (uuids) {
+				uuidsCache.push.apply(uuidsCache, uuids);
+				cb(uuidsCache.pop());
+			},
+			error: function (msg) {
+				sys.error("Unable to get uuids.");
+				cb(hex_sha1(""+Math.random()));
+			}
+		});
+	} else {
+		cb(uuidsCache.pop());
 	}
-	// use hashmark to transmit login token back
-	return base.replace(/#.*$/, '') + "#" + qs.stringify(resp);
 }
 
-var getloginPage = require('fs').readFileSync("getlogin.js");
+var user_prefix = "org.couchdb.user:";
+function prepareUserDoc(user_doc, new_password, callback) {
+	user_doc._id = user_doc._id || user_prefix + user_doc.name;
+	if (new_password) {
+		getUUID(function (salt) {
+			user_doc.salt = salt;
+			user_doc.password_sha = hex_sha1(new_password + salt);
+			next();
+		});
+	} else {
+		next();
+	}
+	function next() {
+		user_doc.type = "user";
+		if (!user_doc.roles) {
+			user_doc.roles = getUserRoles(user_doc.name);
+		}
+		callback();
+	}
+}
+			
+function testCouchLogin(username, password, success, fail) {
+	// test the login with the new credentials
+	var host = makeHost(username + ':' + password);
+	CouchDB.db("", host).interact("get", "/_session", 200, {
+		success: function (session) {
+			if (session.userCtx.name) {
+				success();
+			} else {
+				fail();
+			}
+		},
+		error: fail
+	}, true);
+}
 
 var http = require('http');
 var parseUrl = require('url').parse;
+var qs = require('querystring');
+
 http.createServer(function (request, response) {
 	var path = parseUrl(request.url).pathname;
-	if (path.indexOf("/getlogin.js") == 0) {
-		response.writeHead(200, "OK",
-			{'Content-Type': 'text/javascript'});
-		response.end(getloginPage);
-		return;
-	}
-	
+
 	if (path != "/login") {
 		response.writeHead(404, "Not Found",
 			{'Content-Type': 'text/plain'});
@@ -129,13 +165,71 @@ http.createServer(function (request, response) {
 		var form = qs.parse(body);
 		var username = form.username;
 		var password = form.password;
-		var redirect = form.redirect; // url to redirect to
-		//sys.debug("Got form: " + JSON.stringify(form));
-		tryAuth(username, password, function (success, msg) {
-			var redirectBase = request.headers.referer;
-			var redirectUrl = makeLoginRedirectURL(redirectBase, username, success, msg);
-			response.writeHead(303, "See Other", {"Location": redirectUrl});
+		var redirect = form.redirect;
+		//sys.debug(JSON.stringify(form));
+		
+		// see if the user already exists with this password.
+		testCouchLogin(username, password, function () {
+			sys.debug("didn't have to create user doc.");
+			success();
+		}, doAuth);
+		
+		function finishResponse(msg) {
+			if (redirect) {
+				response.writeHead(303, "See Other", {"Location": redirectUrl});
+			} else {
+				response.writeHead(200, "OK", {"Content-Type": "text/plain"});
+				response.write(msg);
+			}
 			response.end('\n');
-		});
+			sys.debug('end response');
+		}
+		function success() {
+			finishResponse('success');
+		}
+		function fail(msg) {
+			finishResponse(typeof msg == "object" ? JSON.stringify(msg) :
+				msg || "");
+		}
+		
+		// try to authenticate using ldap, imap, etc
+		function doAuth() {
+			tryAuth(username, password, gotAuthResult);
+		}
+		
+		function gotAuthResult(success, msg) {
+			if (!success) {
+				return fail(msg);
+			}
+			
+			// create or update the user doc.
+			usersDb.openDoc(user_prefix + username, {
+				success: function (doc) {
+					updateUserDoc(doc);
+				},
+				error: function (err) {
+					if (err.error == "not_found") {
+						// need to create user doc
+						var doc = {name: username};
+						updateUserDoc(doc);
+					} else {
+						fail(err);
+					}
+				}
+			});
+		}
+		
+		function updateUserDoc(doc) {
+			prepareUserDoc(doc, password, function () {
+				usersDb.saveDoc(doc, {
+					success: function () {
+						// see if the doc change allows a successful login
+						testCouchLogin(username, password, success, fail);					
+					},
+					error: fail
+				});
+			});
+		}
 	});
-}).listen(port);
+	
+}).listen(cred.localPort);

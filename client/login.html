@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ross Authenticator Example</title>
+<script src="couchdb.js"></script>
+<script src="ross-couch-auth.js"></script>
+</head>
+<body>
+<form id="login" action="">
+	<p>Username: <input id="username" name="username"><br>
+	Password: <input id="password" name="password" type="password"></p>
+	<p><button type="submit">Log in</button></p>
+</form>
+<pre id="result"></pre>
+<script>
+if (location.hostname == "localhost") {
+	Couch.urlPrefix = "/couchdb";
+}
+document.getElementById("login").onsubmit = function (e) {
+	e.preventDefault();
+	var username = document.getElementById("username").value;
+	var password = document.getElementById("password").value;
+	RossCouchAuth.login("http://localhost:8124/login", username, password, function (ok) {
+		document.getElementById("result").textContent = ok ? "good": "bad";
+	});
+};
+</script>
+</body>
+</html>
